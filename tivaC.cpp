@@ -7,12 +7,15 @@
 // Librerías
 //****************************************************************
 #include <Arduino.h>
+#include <SPI.h>
+#include <SD.h> 
 #include "pitches.h"
 //****************************************************************
 // Definición de etiquetas
 //****************************************************************
 #define push1 23 //cambiar por 31 Preguntar el valor del sensor
 #define push2 22 //cambiar por 17
+#define chipSelect 5 //CS de la SD
 #define NOTE_C4_1 260
 #define buzzerPin 40 //pin del Buzzer
 //#define RXp2 33 //Pines para la comunicación serial 2
@@ -22,10 +25,12 @@
 //****************************************************************
 void melodiaMedicion(void);
 void melodiaAlmacenar(void);
+void escribirSD(int almacenarSensor);
 //****************************************************************
 // Variables Globales
 //****************************************************************
 int solicitarAnterior=0; //Variable para antirevote del push1
+int almacenarAnterior=0; //Variable para antirevote del push2
 int comSerial=0;
 int recibir=0;           //Recibe el valor de la temp
 
@@ -48,14 +53,22 @@ int noteDurations2[] = { //Duración de la melodía2
 //****************************************************************
 void setup()
 {
-  //Iniciación de la comunicación serial
-  //Serial.begin(115200);
-  Serial.begin(9600); //comunicación UART2
   //Declaración de Entradas
   pinMode(push1, INPUT);
   //declaración de salidas
   pinMode(buzzerPin, OUTPUT);
-  
+  pinMode(chipSelect, OUTPUT);
+
+  //Iniciación de la comunicación serial
+  Serial.begin(115200) //Comunicación UART0
+  Serial2.begin(115200); //comunicación UART2
+  Serial.println("Almacenamiento SD");
+  Serial.println("Inicializando la tarjeta SD. . .");
+  if(!SD.begin(chipSelect)){   // Inicializar la SD 
+    Serial.println("¡Inicialización fallida!");
+    return;
+  }
+  Serial.println("Inicialización realizada.");
 }
 //****************************************************************
 // Loop Principal
@@ -65,32 +78,63 @@ void loop()
   //Parte 2 - Solicitar el valor del sensor
   //Transmición de datos
   volatile int solicitar = digitalRead(push1);
+  
   if(solicitar==1 && solicitarAnterior==0){
     comSerial=1;
-    Serial.print(comSerial);
-    Serial.print('\n');
+    Serial2.print(comSerial);
+    Serial2.print('\n');
     melodiaMedicion();
   }
   solicitarAnterior=solicitar;
   delay(20);
   if(solicitar==0 && solicitarAnterior==0){
     comSerial=0;
-    Serial.print(comSerial);
-    Serial.print('\n');
+    Serial2.print(comSerial);
+    Serial2.print('\n');
   }
   solicitarAnterior=solicitar;
   delay(20);
 
   //Recibir datos el valor de la temp
   if(Serial.available()>0){
-    recibir =Serial.parseInt();
+    recibir =Serial2.parseInt();
   }
-  
+
+  //Parte 4 - Almacenamiento de la SD
+  volatile int almacenar = digitalRead(push2);
+  if(almacenar==1 && almacenarAnterior==0){
+    escribirSD("/medicion_temp.txt");
+    melodiaAlmacenar();
+  }
+  almacenarAnterior=almacenar;
+  delay(20);
 }
   
 //****************************************************************
 // Función para configurar módulo PWM
 //****************************************************************
+//Función para la parte 4
+void escribirSD(int almacenarSensor) // Función para escribir en un archivo de la SD
+{
+  int comandos=0;
+  Serial.println("*******Almacenando la medición del sensor*******");
+   comandos += recibir + "\n"; // // Añade un salto de línea después de cada línea ingresada
+  //Escribe la información en un nuevo archivo
+  myFile2 = SD.open(almacenarSensor, FILE_WRITE);
+  if(myFile2){
+    
+    myFile2.println(comandos);
+    //Cerrar el archivo
+    myFile2.close();
+    Serial.println("Medición Almacenada con Exito");
+  }
+  else{
+    //Si no se puede guardar la imagen, imprima un error
+    Serial.print("Error al tratar de almacenar su medición");
+  }
+}
+
+
 //Parte 5 - Indicador Auditivo
 void melodiaMedicion(void) //Función para el indicador auditivo de la medición del sensor
 {
